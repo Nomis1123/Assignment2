@@ -165,6 +165,8 @@ int main(int argc, char **argv) {
  * when we type ctrl-c (ctrl-z) at the keyboard.  
 */
 void eval(char *cmdline) {
+
+  parseline(cmdline, argv);
     return;
 }
 
@@ -219,15 +221,76 @@ int parseline(const char *cmdline, char **argv) {
  * builtin_cmd - If the user has typed a built-in command then execute
  *    it immediately.  
  */
-int builtin_cmd(char **argv) {
-    return 0;     /* not a builtin command */
+int builtin_cmd(char **argv) { //FINISH RETURN VALS
+
+  if (strcmp(argv[0], "quit"))
+  {
+    printf("IN QUIT");
+    sigquit_handler(SIGQUIT);
+  }
+  else if (strcmp(argv[0], "fg"))
+  {
+    do_bgfg(argv);
+  }
+  else if (strcmp(argv[0], "bg"))
+  {
+    do_bgfg(argv);
+  }
+  else if (strcmp(argv[0], "jobs"))
+  {
+    listjobs(jobs);
+  }  
+  else
+  {
+    printf("Didn't work :(");
+    return -1;
+  }
+    
+  
+  return 0;     /* not a builtin command */
 }
 
 /* 
  * do_bgfg - Execute the builtin bg and fg commands
  */
-void do_bgfg(char **argv) {
-    return;
+void do_bgfg(char **argv) 
+{
+  struct job_t *myjob = NULL;
+  
+    if (len(argv > 1))
+    {
+      char *jobid;
+      if (argv[1][0] == '%')
+      {
+        jobid = argv[1];
+        jobid++;
+        getjobjid(myjob, atoi(jobid)); // will blow up if not a number
+      }
+      else
+      {
+        jobid = argv[1];
+        getjobpid(myjob, atoi(jobid)); // will blow up if not a number
+      }
+      printf(jobid);
+    }
+  
+    if (strcmp(argv[0], "fg"))
+    {
+      if (myjob -> state == BG)
+      {
+        
+      }
+    }
+    
+    else if (strcmp(argv[0], "bg"))
+    {
+      if (myjob -> state == FG)
+      {
+
+      }
+    }
+      
+  return;
 }
 
 /* 
