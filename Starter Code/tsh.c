@@ -164,10 +164,74 @@ int main(int argc, char **argv) {
  * background children don't receive SIGINT (SIGTSTP) from the kernel
  * when we type ctrl-c (ctrl-z) at the keyboard.  
 */
-void eval(char *cmdline) {
 
-  parseline(cmdline, argv);
-    return;
+void eval(char *cmdline) {
+char *argv[MAXARGS]; // Argument list for execve()
+char buf[MAXLINE];   // Holds modified command line
+int bg;              // Should the job run in bg or fg?
+pid_t pid;           // Process id
+sigset_t mask;       // Signal masking for race conditions
+
+strcpy(buf, cmdline);
+bg = parseline(buf, argv);
+if (argv[0] == NULL) {
+    return;   // Ignore empty lines
+}
+
+if (!builtin_cmd(argv)) { 
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGCHLD);
+    if (sigprocmask(SIG_BLOCK, &mask, NULL) < 0) {
+        fprintf(stderr, "sigprocmask error\n");
+        return 1;
+    }
+
+    if ((pid = fork()) < 0) {
+        fprintf(stderr, "fork error\n");
+        return 1;
+    } else if (pid == 0) {   // Child runs user job
+        // Put the child in a new process group by itself
+        if (setpgid(0, 0) < 0) {
+            fprintf(stderr, "setpgid error\n");
+            exit(1); // Exit if setpgid fails
+        }
+            
+        // Unblock SIGCHLD in child
+        if (sigprocmask(SIG_UNBLOCK, &mask, NULL) < 0) {
+            fprintf(stderr, "sigprocmask error\n");
+            exit(1); // Exit if sigprocmask fails
+        }
+
+        if (execvp(argv[0], argv) < 0) {
+            printf("%s: Command not found\n", argv[0]);
+            exit(1); // Exit if execvp fails
+        }
+    }
+
+    // Parent process
+    if (!bg) {
+        if (!addjob(jobs, pid, FG, cmdline)) {
+            fprintf(stderr, "Failed to add job\n");
+            return;
+        }
+        if (sigprocmask(SIG_UNBLOCK, &mask, NULL) < 0) {
+            fprintf(stderr, "sigprocmask error\n");
+            return;
+        }
+        waitfg(pid); // Wait for the foreground job to complete
+    } else {
+        if (!addjob(jobs, pid, BG, cmdline)) {
+            fprintf(stderr, "Failed to add job\n");
+            return;
+        }
+        if (sigprocmask(SIG_UNBLOCK, &mask, NULL) < 0) {
+            fprintf(stderr, "sigprocmask error");
+            return;
+        }
+        printf("[%d] (%d) %s", pid2jid(pid), pid, cmdline);
+    }
+}
+return;
 }
 
 /* 
