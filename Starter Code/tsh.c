@@ -85,6 +85,7 @@ void unix_error(char *msg);
 void app_error(char *msg);
 typedef void handler_t(int);
 handler_t *Signal(int signum, handler_t *handler);
+int child_finished = 0;
 
 /*
  * main - The shell's main routine 
@@ -164,16 +165,27 @@ int main(int argc, char **argv) {
  * background children don't receive SIGINT (SIGTSTP) from the kernel
  * when we type ctrl-c (ctrl-z) at the keyboard.  
 */
-
 void eval(char *cmdline) {
 char *argv[MAXARGS]; // Argument list for execve()
 char buf[MAXLINE];   // Holds modified command line
-int bg;              // Should the job run in bg or fg?
+int bg=0;              // Should the job run in bg or fg?
 pid_t pid;           // Process id
 sigset_t mask;       // Signal masking for race conditions
 
 strcpy(buf, cmdline);
-bg = parseline(buf, argv);
+int args;
+args = parseline(buf, argv); //**loop through argv and check for "&" instead of looking at # of args
+
+for (int i; i<args; i++)
+  {
+    if (strcmp(argv[i], "&") == 0)
+    {
+      bg = 1;
+      argv[i] = NULL;
+      break;
+    }
+  }
+  
 if (argv[0] == NULL) {
     return;   // Ignore empty lines
 }
@@ -181,21 +193,23 @@ if (argv[0] == NULL) {
 if (!builtin_cmd(argv)) { 
     sigemptyset(&mask);
     sigaddset(&mask, SIGCHLD);
+  
     if (sigprocmask(SIG_BLOCK, &mask, NULL) < 0) {
         fprintf(stderr, "sigprocmask error\n");
-        return 1;
+        return;
     }
 
+    child_finished = 0;
     if ((pid = fork()) < 0) {
         fprintf(stderr, "fork error\n");
-        return 1;
+        return;
     } else if (pid == 0) {   // Child runs user job
         // Put the child in a new process group by itself
         if (setpgid(0, 0) < 0) {
             fprintf(stderr, "setpgid error\n");
             exit(1); // Exit if setpgid fails
         }
-            
+
         // Unblock SIGCHLD in child
         if (sigprocmask(SIG_UNBLOCK, &mask, NULL) < 0) {
             fprintf(stderr, "sigprocmask error\n");
@@ -209,7 +223,7 @@ if (!builtin_cmd(argv)) {
     }
 
     // Parent process
-    if (!bg) {
+    if (bg == 0) { //**loop through argv and check for "&" instead of looking at # of args
         if (!addjob(jobs, pid, FG, cmdline)) {
             fprintf(stderr, "Failed to add job\n");
             return;
@@ -287,31 +301,28 @@ int parseline(const char *cmdline, char **argv) {
  */
 int builtin_cmd(char **argv) { //FINISH RETURN VALS
 
-  if (strcmp(argv[0], "quit"))
+  if (strcmp(argv[0], "quit") == 0)
   {
-    printf("IN QUIT");
     sigquit_handler(SIGQUIT);
   }
-  else if (strcmp(argv[0], "fg"))
+  else if (strcmp(argv[0], "fg") == 0)
   {
     do_bgfg(argv);
   }
-  else if (strcmp(argv[0], "bg"))
+  else if (strcmp(argv[0], "bg") == 0)
   {
     do_bgfg(argv);
   }
-  else if (strcmp(argv[0], "jobs"))
+  else if (strcmp(argv[0], "jobs") == 0)
   {
     listjobs(jobs);
-  }  
+  }
   else
   {
-    printf("Didn't work :(");
-    return -1;
+    return 0;  
   }
-    
   
-  return 0;     /* not a builtin command */
+  return 1;     /* not a builtin command */
 }
 
 /* 
@@ -321,7 +332,7 @@ void do_bgfg(char **argv)
 {
   struct job_t *myjob = NULL;
   
-    if (len(argv > 1))
+    if (sizeof(argv) > 1)
     {
       char *jobid;
       if (argv[1][0] == '%')
@@ -335,7 +346,7 @@ void do_bgfg(char **argv)
         jobid = argv[1];
         getjobpid(myjob, atoi(jobid)); // will blow up if not a number
       }
-      printf(jobid);
+      printf("%s", jobid);
     }
   
     if (strcmp(argv[0], "fg"))
@@ -360,7 +371,23 @@ void do_bgfg(char **argv)
 /* 
  * waitfg - Block until process pid is no longer the foreground process
  */
-void waitfg(pid_t pid) {
+void waitfg(pid_t pid) 
+{
+  sigset_t myset;
+  (void) sigemptyset(&myset);
+  while(1)
+  {
+      if(!child_finished)
+      {
+        sigsuspend(&myset);
+      }
+      else
+      {
+        break;
+      }
+        
+  }
+  
     return;
 }
 
@@ -377,6 +404,8 @@ void waitfg(pid_t pid) {
  *     currently running children to terminate.  
  */
 void sigchld_handler(int sig) {
+  printf("In signal handler: sigchld\n");
+  child_finished = 1;
     return;
 }
 
@@ -386,7 +415,8 @@ void sigchld_handler(int sig) {
  *    to the foreground job.  
  */
 void sigint_handler(int sig) {
-    return;
+    printf("In signal handler: sigint\n");
+  return;
 }
 
 /*
@@ -395,6 +425,7 @@ void sigint_handler(int sig) {
  *     foreground job by sending it a SIGTSTP.  
  */
 void sigtstp_handler(int sig) {
+  printf("In signal handler: sigstp\n");
     return;
 }
 
@@ -402,6 +433,7 @@ void sigtstp_handler(int sig) {
  * sigusr1_handler - child is ready
  */
 void sigusr1_handler(int sig) {
+  printf("In signal handler: sigusr1\n");
     ready = 1;
 }
 
