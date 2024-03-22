@@ -317,44 +317,44 @@ int builtin_cmd(char **argv) { // FINISH RETURN VALS
  * do_bgfg - Execute the builtin bg and fg commands
  */
 void do_bgfg(char **argv) {
-  struct job_t *myjob = NULL;
+  struct job_t *job = NULL;
+  int jid; // Job ID
+  pid_t pid; // Process ID
 
-  if (sizeof(argv) > 1) {
-    char *jobid;
+  if (argv[1] == NULL) {
+      printf("%s command requires PID or %%jobid argument\n", argv[0]);
+      return;
+  }
 
-    if (argv[1][0] == '%') {
-      jobid = argv[1] + 1;
+  // Parse the argument to decide if it's a PID or a JID
+  if (argv[1][0] == '%') {
+      jid = atoi(&argv[1][1]);
+      job = getjobjid(jobs, jid);
+      if (job == NULL) {
+          printf("%%%d: No such job\n", jid);
+          return;
+      }
+  } else {
+      pid = atoi(argv[1]);
+      job = getjobpid(jobs, pid);
+      if (job == NULL) {
+          printf("(%d): No such process\n", pid);
+          return;
+      }
+  }
 
-      myjob = getjobjid(jobs, atoi(jobid)); // will blow up if not a number
-    } else {
-      jobid = argv[1];
-      myjob = getjobpid(jobs, atoi(jobid)); // will blow up if not a number
-    }
+  // Send SIGCONT to the job's process group to continue it if stopped
+  if (kill(-job->pid, SIGCONT) < 0) {
+      perror("kill (SIGCONT) error");
   }
 
   if (strcmp(argv[0], "fg") == 0) {
-    if (myjob != NULL && myjob->state == BG) 
-    {
-      int shell_pid = getpid();
-
-      // put the job in the foreground
-      tcsetpgrp(STDIN_FILENO, myjob->pid); 
-
-      // Wait for the foreground job to complete
-      waitfg(myjob->pid);
-
-      // Put the shell back in the foreground.  
-      tcsetpgrp(STDIN_FILENO, shell_pid);
-
-    }
+      job->state = FG;
+      waitfg(job->pid); // Wait for the job to move to the foreground and finish
+  } else {
+      printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
+      job->state = BG;
   }
-
-  else if (strcmp(argv[0], "bg") == 0) {
-    if (myjob != NULL && myjob->state == FG) {
-    }
-  }
-
-  return;
 }
 
 /*
@@ -366,7 +366,9 @@ void waitfg(pid_t pid) {
   while (1) {
     if (!child_finished) {
       sigsuspend(&myset);
-    } else {
+    } else 
+    {
+        waitpid(pid, NULL, WNOHANG);
       break;
     }
   }
