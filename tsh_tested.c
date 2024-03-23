@@ -390,21 +390,27 @@ void waitfg(pid_t pid) {
 void sigchld_handler(int sig) {
   int status;
   int result;
-  printf("In signal handler: sigchld\n");
+  struct job_t *targetjob;
+  //printf("In signal handler: sigchld\n");
   while ((result = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
     if (WIFSTOPPED(status)) {
-      printf("Child #%d is stopped, DO NOT KILL IT!\n", result);
+      targetjob = getjobpid(jobs, result);
+      targetjob -> state = ST;
+      printf("Success! Process #%d has been suspended by signal %d!\n", result, WSTOPSIG(status));
+      child_finished = 1;
       return;
+    } else if (WIFSIGNALED(status)) {
+      printf("Success! Process #%d has been killed by signal %d!\n", result, WTERMSIG(status));
     }
-    printf("Child #%d has been exorcised by signal #%d!\n", result, sig);
+    //printf("Child #%d has been exorcised by signal #%d!\n", result, sig);
     child_finished = 1;
     deletejob(jobs, result);
   }
   if (result == 0) {
-    printf("Nothing to exorcise.\n");
+    //printf("Nothing to exorcise.\n");
   }
   else if (result == -1) {
-    fprintf(stderr, "The exorcism failed. Value of errno: %d\n", errno);
+    //fprintf(stderr, "The exorcism failed. Value of errno: %d\n", errno);
   }
   return;
 }
@@ -415,17 +421,16 @@ void sigchld_handler(int sig) {
  *    to the foreground job.
  */
 void sigint_handler(int sig) {
-  printf("In signal handler: sigint\n");
+  //printf("In signal handler: sigint\n");
   pid_t foregroundPID;
   foregroundPID = fgpid(jobs);
   if (foregroundPID == 0) {
     return;
   }
   if (kill(foregroundPID, sig) == -1) {
-    fprintf(stderr, "Error Killing process with SIGINT: %d\n", errno);
+    fprintf(stderr, "Error killing process with SIGINT: %d\n", errno);
     return;
   }
-  printf("Success! Process #%d has been killed by signal %d!\n", foregroundPID, sig);
   return;
 }
 
@@ -435,9 +440,8 @@ void sigint_handler(int sig) {
  *     foreground job by sending it a SIGTSTP.
  */
 void sigtstp_handler(int sig) {
-  printf("In signal handler: sigstp\n");
+  //printf("In signal handler: sigstp\n");
   pid_t foregroundPID;
-  struct job_t *targetjob;
   foregroundPID = fgpid(jobs);
   if (foregroundPID == 0) {
     return;
@@ -446,9 +450,6 @@ void sigtstp_handler(int sig) {
     fprintf(stderr, "Error suspending process with SIGSTP: %d\n", errno);
     return;
   }
-  targetjob = getjobpid(jobs, foregroundPID);
-  targetjob -> state = ST;
-  printf("Success! Process #%d has been suspended by signal %d!\n", foregroundPID, sig);
   return;
 }
 
