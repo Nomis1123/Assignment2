@@ -174,7 +174,7 @@ void eval(char *cmdline) {
   strcpy(buf, cmdline);
   int args;
 
-  args = parseline(buf, argv); //**loop through argv and check for "&" instead
+  args = parseline(buf, argv); //loop through argv and check for "&" instead
                                //of looking at # of args
 
   for (int i = 0; i < args; i++) {
@@ -222,7 +222,7 @@ void eval(char *cmdline) {
     }
 
     // Parent process
-    if (bg == 0) { //**loop through argv and check for "&" instead of looking at
+    if (bg == 0) { //loop through argv and check for "&" instead of looking at
                    //# of args
       if (!addjob(jobs, pid, FG, cmdline)) {
         fprintf(stderr, "Failed to add job\n");
@@ -388,11 +388,17 @@ void waitfg(pid_t pid) {
  *     currently running children to terminate.
  */
 void sigchld_handler(int sig) {
+  int status;
   int result;
   printf("In signal handler: sigchld\n");
-  while ((result = waitpid(-1, NULL, WNOHANG | WUNTRACED)) > 0) {
+  while ((result = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
+    if (WIFSTOPPED(status)) {
+      printf("Child #%d is stopped, DO NOT KILL IT!\n", result);
+      return;
+    }
     printf("Child #%d has been exorcised by signal #%d!\n", result, sig);
     child_finished = 1;
+    deletejob(jobs, result);
   }
   if (result == 0) {
     printf("Nothing to exorcise.\n");
@@ -417,7 +423,9 @@ void sigint_handler(int sig) {
   }
   if (kill(foregroundPID, sig) == -1) {
     fprintf(stderr, "Error Killing process with SIGINT: %d\n", errno);
+    return;
   }
+  printf("Success! Process #%d has been killed by signal %d!\n", foregroundPID, sig);
   return;
 }
 
@@ -429,13 +437,18 @@ void sigint_handler(int sig) {
 void sigtstp_handler(int sig) {
   printf("In signal handler: sigstp\n");
   pid_t foregroundPID;
+  struct job_t *targetjob;
   foregroundPID = fgpid(jobs);
   if (foregroundPID == 0) {
     return;
   }
   if (kill(foregroundPID, sig) == -1) {
-    fprintf(stderr, "Error killing process with SIGSTP: %d\n", errno);
+    fprintf(stderr, "Error suspending process with SIGSTP: %d\n", errno);
+    return;
   }
+  targetjob = getjobpid(jobs, foregroundPID);
+  targetjob -> state = ST;
+  printf("Success! Process #%d has been suspended by signal %d!\n", foregroundPID, sig);
   return;
 }
 
