@@ -391,26 +391,21 @@ void sigchld_handler(int sig) {
   int status;
   int result;
   struct job_t *targetjob;
-  //printf("In signal handler: sigchld\n");
   while ((result = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
     if (WIFSTOPPED(status)) {
       targetjob = getjobpid(jobs, result);
       targetjob -> state = ST;
-      printf("Success! Process #%d has been suspended by signal %d!\n", result, WSTOPSIG(status));
+      printf("Job [%d] (%d) stopped by signal %d\n", pid2jid(result), result, WSTOPSIG(status));
       child_finished = 1;
       return;
     } else if (WIFSIGNALED(status)) {
-      printf("Success! Process #%d has been killed by signal %d!\n", result, WTERMSIG(status));
+      printf("Job [%d] (%d) terminated by signal %d\n", pid2jid(result), result, WTERMSIG(status));
     }
-    //printf("Child #%d has been exorcised by signal #%d!\n", result, sig);
     child_finished = 1;
     deletejob(jobs, result);
   }
-  if (result == 0) {
-    //printf("Nothing to exorcise.\n");
-  }
-  else if (result == -1) {
-    //fprintf(stderr, "The exorcism failed. Value of errno: %d\n", errno);
+  if (result == -1 && errno != 10) {
+    fprintf(stderr, "The exorcism failed. Value of errno: %d\n", errno);
   }
   return;
 }
@@ -421,7 +416,6 @@ void sigchld_handler(int sig) {
  *    to the foreground job.
  */
 void sigint_handler(int sig) {
-  //printf("In signal handler: sigint\n");
   pid_t foregroundPID;
   foregroundPID = fgpid(jobs);
   if (foregroundPID == 0) {
@@ -440,7 +434,6 @@ void sigint_handler(int sig) {
  *     foreground job by sending it a SIGTSTP.
  */
 void sigtstp_handler(int sig) {
-  //printf("In signal handler: sigstp\n");
   pid_t foregroundPID;
   foregroundPID = fgpid(jobs);
   if (foregroundPID == 0) {
