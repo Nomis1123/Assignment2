@@ -176,7 +176,7 @@ strcpy(buf, cmdline);
 int args;
 args = parseline(buf, argv); //**loop through argv and check for "&" instead of looking at # of args
 
-for (int i = 0; i < args; i++) {
+for (int i = 0; i < args; i++)
   {
     if (strcmp(argv[i], "&") == 0)
     {
